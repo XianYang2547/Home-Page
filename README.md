@@ -4,7 +4,7 @@
 
 
 # <p align="center">:blush::blush::blush:Welcome:blush::blush::blush:</p>
-<p align="center">🍄工作中的一些记录，比如一些代码等🍄</p>
+<p align="center">🍄参考实现lane line + object🍄</p>
 
 <p align="center"> 
 <img src="image/943.jpg">
