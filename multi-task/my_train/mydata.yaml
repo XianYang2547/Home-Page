@@ -1,0 +1,32 @@
+
+#path: /home/xianyang/Desktop/datas/data1612
+path: /home/xianyang/Desktop/datas/data943
+
+
+train: images/train2017  # train images for object detection (relative to 'path')
+val: images/val2017  # val images for object detection (relative to 'path')
+
+labels_list:
+  - detection-object
+#  - seg-drivable-10
+  - seg-lane-11
+
+tnc: 10  # number of classes
+nc_list: [9,1]
+map: [None,{'9':'0'}]
+
+# Classes for all tasks
+names:
+  0: lta
+  1: straight line
+  2: zebra crossing
+  3: left turn
+  4: sr turn
+  5: sl turn
+  6: right turn
+  7: Rhomboid
+  8: turn around
+
+  9: Lane line  # Add lane class for lane segmentation
+
+
