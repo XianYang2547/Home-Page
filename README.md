@@ -11,6 +11,10 @@
 </p>
 
 
+## Reference
+- [https://github.com/JiayuanWang-JW/YOLOv8-multi-task](https://github.com/JiayuanWang-JW/YOLOv8-multi-task)
+## 
+~感谢作者，让我受益匪浅，学到了很多~
 
 
 
