@@ -10,7 +10,8 @@
 <img src="image/943.jpg">
 </p>
 
-
+## model
+- 待上传
 ## Reference
 - [https://github.com/JiayuanWang-JW/YOLOv8-multi-task](https://github.com/JiayuanWang-JW/YOLOv8-multi-task)
 ## 
