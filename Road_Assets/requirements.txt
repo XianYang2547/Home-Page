@@ -1,0 +1,16 @@
+colorlog==6.8.2
+cuda_python==12.3.0
+cupy_cuda11x==12.3.0
+cv_bridge
+cython_bbox==0.1.5
+lap==0.4.0
+message_filters
+numpy==1.26.4
+onnxruntime==1.16.3
+onnxruntime_gpu==1.16.3
+PyYAML
+scipy==1.14.1
+sensor_msgs
+# 手动安装
+# tensorrt==8.6.1
+# sudo apt install ffmpeg
