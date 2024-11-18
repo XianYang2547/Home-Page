@@ -1,0 +1,13 @@
+colorlog==6.8.2
+cuda_python==12.6.0
+cupy_cuda11x==13.3.0
+cython_bbox==0.1.5
+lap==0.4.0
+numpy==1.26.4
+onnxruntime_gpu==1.18.0
+opencv_python==4.8.0.74
+pyzed==4.0
+scipy==1.14.1
+tensorrt==8.6.1
+
+# ultralytics==8.2.99

@@ -1,0 +1,89 @@
+city_det:
+  0: Lta            # 掉头-左箭头
+  1: Straight_arrow  # 直行箭头
+  2: Zebra_crossing # 斑马线
+  3: Left_turn      # 左转箭头
+  4: Sr_turn        # 直行右转箭头
+  5: Sl_turn        # 直行左转箭头
+  6: Right_turn     # 右转箭头
+  7: Rhomboid       # 菱形
+  8: Turn_around    # 掉头箭头
+  9: Lor            # 左右箭头
+  10: Signs          # 标牌
+  11: Speed_limit    # 限速
+  12: Signal_light   # 信号灯
+  13: No_stopping    # 禁停
+  14: Stop_line      # 停止线
+
+city_seg:
+  0: Lane
+  1: Waiting_area
+
+gaosu_det:
+  0: Signs                        # 标牌
+  1: Camera                       # 相机
+  2: Box                          # 盒子
+  3: Signal_light                 # 信号灯
+  4: Bridge                       # 桥梁
+  5: Bridge_columns               # 桥墩
+  6: Electronic_screen            # 电子屏
+  7: Anti_collision_bucket        # 防撞桶
+  8: Speed_indicator              # 限速牌
+  9: gan_zi                       # 杆子
+  10: jia_zi                      # 架子
+  11: Warning_lights              # 警告灯
+  12: Speed_limit                 # 限速
+  13: Right_turn                  # 右转箭头
+  14: Sr_turn                     # 直行右转箭头
+  15: Straight_arrow              # 直行箭头
+
+gaosu_seg:
+  0: Lane                        # 车道线
+  1: Isolation_fence             # 隔离护栏
+  2: Green_belt                  # 绿化带
+  3: Sound_insulation_tape       # 隔音带
+  4: Guide_line                  # 导流线
+  5: Anti_throwing_net           # 防抛网
+  6: Cement_guardrail            # 水泥护栏
+
+city_det_new:
+  0: Lta
+  1: Reverse_Lta
+  2: Straight_arrow
+  3: Reverse_Straight_arrow
+  4: Left_turn
+  5: Reverse_Left_turn
+  6: Sr_turn
+  7: Reverse_Sr_turn
+  8: Sl_turn
+  9: Reverse_Sl_turn
+  10: Right_turn
+  11: Rhomboid
+  12: Turn_around
+  13: Lor
+  14: Zebra_crossing
+  15: Signs
+  16: Speed_limit
+  17: Signal_light
+  18: No_stopping
+  19: Stop_line
+  20: Anti_collision_bucket
+  21: Bus_stop
+  22: Bus_stop_sign
+  23: device_pole
+  24: Light_pole
+  25: Camera
+  26: Trash_can
+  27: Electronic_screen
+
+city_seg_new:
+  0: Lane
+  1: Kerbstone   # 待行区
+  2: Guardrail
+  3: Green_belt
+  4: Tree_trunk
+  5: Construction_baffle
+  6: Flower_bed
+  7: Fish_bone_line
+  8: Waiting_area
+  9: Cement_guardrail
