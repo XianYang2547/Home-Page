@@ -14,3 +14,12 @@
 
 
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=XianYang2547/Internship-Item&type=Date)](https://star-history.com/#XianYang2547/Internship-Item&Date)
+
+## 🎖 贡献者
+
+<a href="https://github.com/XianYang2547/Internship-Item/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=XianYang2547/Internship-Item" />
+</a>
