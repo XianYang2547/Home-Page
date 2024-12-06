@@ -16,22 +16,25 @@ import numpy as np
 import yaml
 
 from xy import *
-from xy.funcs import detect_image_or_imgdir, detect_video
+from xy.funcs import detect_image_or_imgdir, detect_video, get_ip_addresses
 
 
 class Dection(My_detection):
     def __init__(self, opt):
         super().__init__()
         with open('./xy/xyz_class.yaml', 'r', encoding='utf-8') as file:
-            myclass = yaml.safe_load(file)
+            myconfig = yaml.safe_load(file)
         # 类别分类
-        self.lane = {int(key): value for key, value in myclass['lane'].items()}  # 车道线
-        self.seg = {int(key): value for key, value in myclass['seg'].items()}  # 护栏 隔音带  水泥墙  绿化带  路缘石
-        self.obj = {int(key): value for key, value in myclass['obj'].items()}  # 画框显示
-        self.other = {int(key): value for key, value in myclass['other'].items()}  # 路口黄网线 导流区 待行区 防抛网 隔离挡板
+        self.lane = {int(key): value for key, value in myconfig['classes']['lane'].items()}  # 车道线
+        self.seg = {int(key): value for key, value in myconfig['classes']['seg'].items()}  # 护栏 隔音带  水泥墙  绿化带  路缘石
+        self.obj = {int(key): value for key, value in myconfig['classes']['obj'].items()}  # 画框显示
+        self.other = {int(key): value for key, value in myconfig['classes']['other'].items()}  # 路口黄网线 导流区 待行区 防抛网 隔离挡板
         self.lane_seg_other = {**self.lane, **self.seg, **self.other}  # 在画图显示中用到的
         self.classes = {**self.lane, **self.seg, **self.obj, **self.other}  # total
-        self.color_palette = np.random.uniform(50, 255, size=(len(self.classes), 3))
+        # 颜色板
+        palette = myconfig['palette']
+        self.color_palette = palette[0][:len(self.classes)]
+
         if os.path.splitext(opt.model)[1] == '.plan':
             self.Models = Build_TRT_model(str(Path(opt.model).resolve()))
             self.warm_up(15)
@@ -299,12 +302,15 @@ class Dection(My_detection):
 def make_parser():
     # model config
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default=f"{os.path.abspath('../models/modelm.plan')}")
+    parser.add_argument('--model', type=str, default=f"{os.path.abspath('../models/best.plan')}")
     parser.add_argument('--iou_threshold', type=float, default=0.4)
     parser.add_argument('--conf_threshold', type=float, default=0.4)
     # input output path
-    parser.add_argument('--path', type=str, default=f"{os.path.abspath('../assets/')}")
+    parser.add_argument('--path', type=str, default=f"{os.path.abspath('../assets/test.jpg')}")
     parser.add_argument('--base_directory', type=str, default=f"{os.path.abspath('../output')}")
+    # rtsp
+    parser.add_argument('--rtsp', type=str, default=False)
+    parser.add_argument('--url', type=str, default=get_ip_addresses())
     # tracking args
     parser.add_argument("--track_thresh", type=float, default=0.5, help="tracking confidence threshold")
     parser.add_argument("--track_buffer", type=int, default=30, help="the frames for keep lost tracks")
@@ -312,7 +318,10 @@ def make_parser():
     parser.add_argument("--aspect_ratio_thresh", type=float, default=1.6)
     parser.add_argument('--min_box_area', type=float, default=10, help='filter out tiny boxes')
     parser.add_argument("--mot20", dest="mot20", default=False, action="store_true", help="test mot20.")
-
+    # save config
+    parser.add_argument('--save_orin_svo', type=str, default=True)
+    parser.add_argument('--save_img', type=str, default=False)
+    parser.add_argument('--save_mask', default=False)
     return parser
 
 
@@ -321,34 +330,55 @@ def main():
     Model = Dection(opt)
     SUF1 = ('.jpeg', '.jpg', '.png', '.webp')
     SUF2 = ('.mp4', '.avi')
-
+    SUF3 = ('.svo', '.svo2')
+    use_camera = False
+    use_zed_camera = False
     if isinstance(opt.path, str):
         opt.path = Path(opt.path)
+        if 'camera' == opt.path.name:
+            use_camera = True
+        elif 'zed_camera' == opt.path.name:
+            use_zed_camera = True
+        else:
+            assert opt.path.exists()
 
-    assert opt.path.exists()
     # 创建输出文件路径
     if not os.path.exists(opt.base_directory):
         os.makedirs(opt.base_directory)
 
+    # 判断输入类型
     if opt.path.suffix in SUF1:  # image
         images = [opt.path.absolute()]
         detect_image_or_imgdir(opt, images, Model, saveMask=True)
 
-    elif opt.path.suffix in SUF2:  # video
-        detect_video(opt, Model)
+    elif opt.path.suffix in SUF2 or use_camera:  # video or camera
+        if use_camera:
+            opt.path = 'camera'
+        detect_video(opt, Model, f"rtsp://{opt.url[0]}:8554/test")
 
-    elif opt.path.is_dir():  # dir [images/videos]
+    elif opt.path.suffix in SUF3 or use_zed_camera:  # svo or camera
+        from xy.detect_svo import detect_svo_track
+        if use_zed_camera:
+            opt.path = 'zed_camera'
+        detect_svo_track(opt, Model, f"rtsp://{opt.url[0]}:8554/test")
+
+    elif opt.path.is_dir():  # dir [images/videos/svo/svo2]
         # images
         images = [i.absolute() for i in opt.path.iterdir() if i.suffix in SUF1]
         if images:
             detect_image_or_imgdir(opt, images, Model, saveMask=True)
         # videos
-
-        # videos = [i.absolute() for i in opt.path.iterdir() if i.suffix in SUF2]
-        # if videos:
-        #     for video_path in videos:
-        #         opt.path = video_path
-        #         detect_video(opt, Model)
+        videos = [i.absolute() for i in opt.path.iterdir() if i.suffix in SUF2]
+        if videos:
+            for video_path in videos:
+                opt.path = video_path
+                detect_video(opt, Model, f"rtsp://{opt.url[0]}:8554/test")
+        # svo
+        svo1_2 = [i.absolute() for i in opt.path.iterdir() if i.suffix in SUF3]
+        if svo1_2:
+            for svo_path in svo1_2:
+                opt.path = svo_path
+                detect_video(opt, Model, f"rtsp://{opt.url[0]}:8554/test")
 
 
 if __name__ == '__main__':

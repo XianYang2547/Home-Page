@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <cstdlib>
 #include <vector>
 #include <NvInfer.h>
 #include <NvOnnxParser.h>
@@ -45,9 +46,9 @@ public:
 };
 
 
-void get_engine(const std::string onnx_path, const std::string engine_path, const bool fp16) {
-    const int kInputH = 640;
-    const int kInputW = 640;
+void get_engine(const std::string onnx_path, const std::string engine_path, const int size, const bool fp16) {
+    const int kInputH = size;
+    const int kInputW = size;
     IRuntime *runtime;
     ICudaEngine *engine;
     Logger gLogger;
@@ -103,18 +104,81 @@ void get_engine(const std::string onnx_path, const std::string engine_path, cons
     delete network;
     delete builder;
 }
+bool is_integer(const std::string &str) {
+    return str.find_first_not_of("0123456789") == std::string::npos;
+}
+bool is_boolean(const std::string &str) {
+    return str == "true" || str == "false";
+}
 
 int main(int argc, char **argv) {
-    if (argc<=2){
-        std::cout<<"you must provide two or three input, onnx file, engine output file name,you also can provide a bool true or false, it control fp16"<<std::endl;
-        std::cout<<"such as: ./get_engine test.onnx filename.engine true"<<std::endl;
+    if (argc <= 2) {
+        std::cout << "You must provide two or three inputs: onnx file, engine output file name.\n";
+        std::cout << "You can also provide: 1. model input size (default: 640).\n";
+        std::cout << " 			    2. a bool (true/false) to control fp16.\n";
+        std::cout << "Example: ./get_engine test.onnx filename.engine 640 true\n";
         return 0;
     }
     std::string onnx = argv[1];
     std::string engine = argv[2];
-    bool fp16 = argv[3];
-    get_engine(onnx, engine, fp16);
+    // 检查文件是否存在
+    std::ifstream onnx_file(onnx);
+    if (!onnx_file) {
+        std::cerr << "Error: ONNX file " << onnx << " does not exist.\n";
+        return 1;
+    }
+    // 可选参数
+    int size = 640;       // 默认输入大小
+    bool fp16 = false;    // 默认不启用 FP16
+    bool size_provided = false; // 标记是否提供了输入大小
+    bool fp16_provided = false; // 标记是否提供了 FP16
 
+    // 参数解析
+    if (argc > 3) {
+        std::string arg3 = argv[3];
+        if (is_integer(arg3)) {
+            size = std::stoi(arg3);
+            size_provided = true;
+        } else if (is_boolean(arg3)) {
+            fp16 = (arg3 == "true");
+            fp16_provided = true;
+        } else {
+            std::cerr << "Error: Invalid third argument. It must be an integer (size) or a boolean (true/false). Provided: " << arg3 << "\n";
+            return 1;
+        }
+    }
+    if (argc > 4) {
+        std::string arg4 = argv[4];
+        if (is_boolean(arg4)) {
+            fp16 = (arg4 == "true");
+            fp16_provided = true;
+        } else {
+            std::cerr << "Error: Invalid fourth argument. It must be a boolean (true/false). Provided: " << arg4 << "\n";
+            return 1;
+        }
+    }
+    
+    std::cout << "---------------------------------------------------------" << "\n";
+    std::cout << "ONNX file: " << onnx << "\n";
+    std::cout << "Engine file: " << engine << "\n";
+    if (size_provided) {
+        std::cout << "Input size: " << size << " (provided by user)\n";
+    } else {
+        std::cout << "Input size: " << size << " (default value)\n";
+    }
+
+    if (fp16_provided) {
+        std::cout << "FP16 enabled: " << (fp16 ? "true" : "false") << " (provided by user)\n";
+    } else {
+        std::cout << "FP16 enabled: " << (fp16 ? "true" : "false") << " (default value)\n";
+    }
+    std::cout << "---------------------------------------------------------" << "\n";
+    
+    
+    get_engine(onnx, engine, size, fp16);
+
+    return 0;
+    
 }
 /*
  g++ -o get_engine get_trt.cpp -I/home/xianyang/Documents/TensorRT-8.6.1.6/include -L/home/xianyang/Documents/TensorRT-8.6.1.6/lib -lnvinfer -I/usr/local/cuda/include -L/usr/local/cuda/lib64  -lcudart -lnvonnxparser

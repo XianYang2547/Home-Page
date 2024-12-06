@@ -34,7 +34,7 @@ class My_detection():
 
     def __call__(self, image):
         pre_start_time = time.time()
-        im, ratio, pad_w, pad_h = self.preprocess(image, [640, 640])
+        im, ratio, pad_w, pad_h = self.preprocess(image, self.Models.input_shapes[0][2:])
         pre_end_time = time.time()
         # 推理
         inf_start_time = time.time()
@@ -51,8 +51,9 @@ class My_detection():
 
     def warm_up(self, n):
         """模型预热"""
+        size = self.Models.input_shapes[0][2:]
         for i in range(n):
-            dummy_input = np.random.rand(1, 3, 640, 640).astype(self.Models.dtypes)
+            dummy_input = np.random.rand(1, 3, *size).astype(self.Models.dtypes)
             self.Models(dummy_input)
         print("Model Warmup " + f"{n}" + " times")
 
@@ -534,6 +535,11 @@ class Build_TRT_model():
         self.nInput = [engine.get_tensor_mode(self.tensorname[i]) for i in range(self.nIO)].count(
             trt.TensorIOMode.INPUT)  # 1个输入
         self.dtypes = trt.nptype(engine.get_tensor_dtype(self.tensorname[0]))
+        self.input_shapes = [
+            engine.get_tensor_shape(self.tensorname[i])
+            for i in range(self.nIO)
+            if engine.get_tensor_mode(self.tensorname[i]) == trt.TensorIOMode.INPUT
+        ]
         print('Load engine success')
 
     def __call__(self, image):
@@ -568,6 +574,7 @@ class Build_Ort_model():
         if ort.get_device() == 'GPU' else ['CPUExecutionProvider'])
         print(f"Load onnx success, using {ort.get_device()}")
         self.dtypes = np.half if self.session.get_inputs()[0].type == 'tensor(float16)' else np.single
+        self.input_shapes = [self.session._inputs_meta[0].shape]
 
     def __call__(self, image):
         res = self.session.run(None, {self.session.get_inputs()[0].name: image})

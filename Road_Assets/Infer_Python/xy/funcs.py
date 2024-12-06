@@ -25,9 +25,10 @@ from .tracker.byte_tracker import BYTETracker
 warnings.filterwarnings("ignore", category=np.RankWarning)
 
 
-# 图片视频示例
+# 图片示例
 def detect_image_or_imgdir(opt, img_path, Model, saveMask):
     """使用图片或图片目录"""
+    # 保存路径
     saves = f"{opt.base_directory}/detect_image"
     save_path = Path(create_incremental_directory(saves))
     for image in img_path:
@@ -39,70 +40,56 @@ def detect_image_or_imgdir(opt, img_path, Model, saveMask):
         if len(seg[0]) != 0:
             box, segpoint = seg[0][0], seg[1][0]
             for c in range(len(Model.lane)):
-                for index, j in enumerate(
-                        [tensor for tensor, is_true in zip(segpoint, box[:, -1] == c) if is_true]):  # 只要车道线的数据
-                    # 按 y 值进行排序
-                    sorted_indices = np.argsort(j[:, 1])[::-1]
-                    points_np = j[sorted_indices]
-                    fit_xdata = polynomial_fit(list(range(1, len(j) + 1)), points_np.T[0], degree=4)
-                    fit_ydata = polynomial_fit(list(range(1, len(j) + 1)), points_np.T[1], degree=4)
-                    fit_point = np.array([fit_xdata, fit_ydata])  # 组合
-                    for i in range(len(fit_point[0]) - 1):  # 画线条
-                        x1 = fit_point[0][i]
-                        y1 = fit_point[1][i]
-                        x2 = fit_point[0][i + 1]
-                        y2 = fit_point[1][i + 1]
-                        cv2.line(res, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                    indices = np.linspace(0, fit_point.shape[1] - 1, num=15, dtype=int)  # 等距取点的索引
-                    new_fit_point = fit_point[:, indices]
-                    max_distance = np.linalg.norm(np.vstack((new_fit_point[0], new_fit_point[1])).T[0] -
-                                                  np.vstack((new_fit_point[0], new_fit_point[1])).T[-1])
-                    for i, (x, y) in enumerate(zip(new_fit_point[0], new_fit_point[1])):
-                        if max_distance > 100:
-                            cv2.circle(res, (int(x), int(y)), 5, (0, 0, 255), -1)
-                        if max_distance < 100 and i == 4 or i == 7 or i == 12:
-                            cv2.circle(res, (int(x), int(y)), 5, (0, 0, 255), -1)
-
+                for index, j in enumerate([tensor for tensor, is_true in zip(segpoint, box[:, -1] == c) if is_true]):  # 只要车道线的数据
+                    # 画出拟合点
+                    image_video_fit(j, res)
         print(f"Use time for {image}: {(end_time - start_time) * 1000:.2f} ms")
         save_img = save_path / image.name
         cv2.imwrite(str(save_img), res)
         print(f"Save in {save_img}")
-
-        if saveMask:
-            filename = os.path.join(save_path, f'{os.path.splitext(image.name)[0]}_mask.png')
-            # 如果有多个掩膜
-            if len(masks) != 0:
-                # 根据第一个掩膜的尺寸创建空白彩色图像
-                height, width = masks[0].shape[:2]
-                combined_mask = np.full((height, width, 3), (114, 114, 114), dtype=np.uint8)  # 初始化为灰色
-                # 定义颜色列表，不同掩膜用不同颜色
-                colors = generate_colors(len(masks))
-                # 遍历每个掩膜
-                for i in range(len(masks)):
-                    mask_image = (masks[i] * 255).astype(np.uint8)  # 将掩膜转化为 0 或 255 的二值图像
-                    color_mask = np.zeros_like(combined_mask)  # 创建与 combined_mask 大小相同的空白彩色图像
-                    # 为每个通道分别应用颜色
-                    for j in range(3):
-                        color_mask[:, :, j] = mask_image * (colors[i % len(colors)][j] // 255)
-                    # 将彩色掩膜叠加到 combined_mask
-                    combined_mask = cv2.addWeighted(combined_mask, 1, color_mask, 0.5, 0)
-                # 保存最终组合的掩膜图像
-                cv2.imwrite(filename, combined_mask)
+        # 保存彩色mask
+        if saveMask and masks is not None:
+            save_mask(save_path, image, masks)
 
 
-def detect_video(opt, Model):
-    """使用一般的视频"""
+# 视频示例
+def detect_video(opt, Model, rtspUrl):
+    """使用一般的视频或者摄像头"""
+    # 保存事项
     saves = f"{opt.base_directory}/detect_video"
     save_path = Path(create_incremental_directory(saves))
     save_name = os.path.splitext(os.path.basename(opt.path))[0] + '_infer.mp4'
     save_video = save_path / save_name
-
+    # 跟踪实例化
     tracker = BYTETracker(opt, frame_rate=30)
-    capture = cv2.VideoCapture(str(opt.path))
+    # 输入来源
+    if opt.path != 'camera':
+        capture = cv2.VideoCapture(str(opt.path))
+    else:
+        capture = cv2.VideoCapture(0)
+    # 视频写入器
     fourcc = cv2.VideoWriter.fourcc(*"mp4v")
     size = (int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     out = cv2.VideoWriter(str(save_video), fourcc, 30, size)
-
+    # RTSP
+    if opt.rtsp:
+        command = [
+            'ffmpeg',
+            # 're',#
+            # '-y', # 无需询问即可覆盖输出文件
+            '-f', 'rawvideo',  # 强制输入或输出文件格式
+            '-vcodec', 'rawvideo',  # 设置视频编解码器。这是-codec:v的别名
+            '-pix_fmt', 'bgr24',  # 设置像素格式
+            '-s', '1920*1080',  # 设置图像大小
+            '-r', '30',  # 设置帧率
+            '-i', '-',  # 输入
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-preset', 'ultrafast',
+            '-f', 'rtsp',  # 强制输入或输出文件格式
+            rtspUrl]
+        pipe = subprocess.Popen(command, stdin=subprocess.PIPE)
+    # 创建窗口
     cv2.namedWindow('trt_result', cv2.WINDOW_NORMAL)
     cv2.resizeWindow('trt_result', 1344, 768)
     while True:
@@ -110,58 +97,23 @@ def detect_video(opt, Model):
         if not ref:
             break
         seg, masks = Model(frame)
+        # 跟踪匹配和分配
         if len(seg[0]) != 0:
-            new_seg_output = np.zeros((seg[0][0].shape[0], 7))  # seg是个list2 seg[0]是个list seg[0][0]里面是框
-            # 使用seg[0][0]填充，然后再填充id
-            new_seg_output[:, :5] = seg[0][0][:, :5]
-            new_seg_output[:, 6] = seg[0][0][:, 5]
-            track_seg = seg[0][0].copy()
-            track_seg[:, 4] = 0.95
-            seg_track = tracker.update(track_seg[:, :5])
-            # 将id和框对应起来
-            for track in seg_track:
-                box_iou = iou(track.tlbr, track_seg[:, :4])
-                maxindex = np.argmax(box_iou)
-                new_seg_output[maxindex, :5] = seg[0][0][maxindex, :5]
-                new_seg_output[maxindex, 5] = track.track_id
-                new_seg_output[maxindex, 6] = seg[0][0][maxindex, 5]
-            # new_seg_output  x1y1x2y2 conf id class
-            if 0 in new_seg_output[:, 5]:
-                for i in range(len(new_seg_output[:, 5])):
-                    if new_seg_output[:, 5][i] == 0:
-                        new_seg_output[:, 5][i] = tracker.nextid()
-            seg[0] = [new_seg_output]
+            seg = mytrack(seg, tracker)
+        # 绘图显示
         frame = Model.my_show(seg, frame, masks, show_track=True)
+        # 简单拟合
         if len(seg[0]) != 0:
             box, segpoint = seg[0][0], seg[1][0]
             for c in range(len(Model.lane)):
-                for index, j in enumerate(
-                        [tensor for tensor, is_true in zip(segpoint, box[:, -1] == c) if is_true]):  # 只要车道线的数据
-                    # 按 y 值进行排序
-                    sorted_indices = np.argsort(j[:, 1])[::-1]
-                    points_np = j[sorted_indices]
-                    fit_xdata = polynomial_fit(list(range(1, len(j) + 1)), points_np.T[0], degree=4)
-                    fit_ydata = polynomial_fit(list(range(1, len(j) + 1)), points_np.T[1], degree=4)
-                    fit_point = np.array([fit_xdata, fit_ydata])  # 组合
-                    for i in range(len(fit_point[0]) - 1):  # 画线条
-                        x1 = fit_point[0][i]
-                        y1 = fit_point[1][i]
-                        x2 = fit_point[0][i + 1]
-                        y2 = fit_point[1][i + 1]
-                        cv2.line(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                    indices = np.linspace(0, fit_point.shape[1] - 1, num=15, dtype=int)  # 等距取点的索引
-                    new_fit_point = fit_point[:, indices]
-                    max_distance = np.linalg.norm(np.vstack((new_fit_point[0], new_fit_point[1])).T[0] -
-                                                  np.vstack((new_fit_point[0], new_fit_point[1])).T[-1])
-                    for i, (x, y) in enumerate(zip(new_fit_point[0], new_fit_point[1])):
-                        if max_distance > 100:
-                            cv2.circle(frame, (int(x), int(y)), 5, (0, 0, 255), -1)
-                        if max_distance < 100 and i == 4 or i == 7 or i == 12:
-                            cv2.circle(frame, (int(x), int(y)), 5, (0, 0, 255), -1)
+                for index, j in enumerate([tensor for tensor, is_true in zip(segpoint, box[:, -1] == c) if is_true]):
+                    image_video_fit(j, frame)
         cv2.imshow("trt_result", frame)
-        c = cv2.waitKey(1) & 0xff
         out.write(frame)
-        if c == 27:
+        # 推流画面
+        if opt.rtsp:
+            pipe.stdin.write(frame.tostring())
+        if cv2.waitKey(25) & 0xFF == ord('q'):
             capture.release()
             break
     capture.release()
@@ -235,17 +187,6 @@ def iou(box: np.ndarray, boxes: np.ndarray):
     return inter / (area_box + area_boxes - inter)
 
 
-# detect_image_or_imgdir中生成mask颜色
-def generate_colors(num_colors):
-    colors = []
-    for i in range(num_colors):
-        # 均匀分布在 HSV 空间的色调上，然后转换为 BGR
-        hue = int(i * 180 / num_colors)  # 取值范围为 0 到 180（OpenCV 中 H 通道范围为 0-180）
-        color = cv2.cvtColor(np.uint8([[[hue, 255, 255]]]), cv2.COLOR_HSV2BGR)[0][0]
-        colors.append(tuple(int(c) for c in color))  # 转换为 BGR 元组
-    return colors
-
-
 # 拟合
 def my_fit(j, image, cutoff=50, color=(0, 255, 0)):
     # 排序再拟合
@@ -307,26 +248,28 @@ def mytrack(seg, tracker):
 
 def get_seg_result(seg, point_cloud, bgr_image, file, Model, ret_datetime):
     """Write segmentation information"""
-    box, segpoint = seg[0][0], seg[1][0]
-    for key, value in Model.classes.items():  # for each seg class
-        # 车道线
-        if len(box[box[:, -1] == key]) != 0 and value in Model.lane.values():
-            get_information(box, segpoint, key, value, bgr_image, file, point_cloud, Model.color_palette, ret_datetime,
-                            lane=True, point_size=5)
-        # 护栏 隔音带  水泥墙  绿化带  路缘石
-        elif len(box[box[:, -1] == key]) != 0 and value in Model.seg.values():
-            get_information(box, segpoint, key, value, bgr_image, file, point_cloud, Model.color_palette, ret_datetime,
-                            lane=False, point_size=3)
-        # 路口黄网线 导流区 待行区 防抛网 隔离挡板
-        elif len(box[box[:, -1] == key]) != 0 and value in Model.other.values():
-            write_Irregulate(box, segpoint, key, value, file, point_cloud)  # 不规则的
-        # 框
-        elif len(box[box[:, -1] == key]) != 0 and value in Model.obj.values():
-            write_all_target(box, segpoint, key, value, file, point_cloud)
+    if len(seg[0]) != 0:
+        box, segpoint = seg[0][0], seg[1][0]
+        for key, value in Model.classes.items():  # for each seg class
+            # 车道线
+            if len(box[box[:, -1] == key]) != 0 and value in Model.lane.values():
+                get_information(box, segpoint, key, value, bgr_image, file, point_cloud, Model.color_palette,
+                                ret_datetime,
+                                lane=True, point_size=5)
+            # 护栏 隔音带  水泥墙  绿化带  路缘石
+            elif len(box[box[:, -1] == key]) != 0 and value in Model.seg.values():
+                get_information(box, segpoint, key, value, bgr_image, file, point_cloud, Model.color_palette,
+                                ret_datetime,
+                                lane=False, point_size=3)
+            # 路口黄网线 导流区 待行区 防抛网 隔离挡板
+            elif len(box[box[:, -1] == key]) != 0 and value in Model.other.values():
+                write_Irregulate(box, segpoint, key, value, file, point_cloud)  # 不规则的
+            # 框
+            elif len(box[box[:, -1] == key]) != 0 and value in Model.obj.values():
+                write_all_target(box, segpoint, key, value, file, point_cloud)
 
 
-def get_up_down_point(box, segpoint, key, bgr_image, point_cloud, color_palette, point_size, value, ret_datetime,
-                      lane=False):
+def get_up_down_point(box, segpoint, key, bgr_image, point_cloud, color_palette, point_size, value, ret_datetime, lane=False):
     total = []
     # 获取当前类别的所有数量的3d点
     for b, j in zip([bb for bb, is_true in zip(box, box[:, -1] == key) if is_true],
@@ -418,9 +361,12 @@ def get_up_down_point(box, segpoint, key, bgr_image, point_cloud, color_palette,
         u = midpoints[:, 0]
         v = midpoints[:, 1]
 
-        point_data = point_cloud[v, u]
-        # point_data = point_data / 1000
-        point_data = point_data[:, :3]
+        if type(point_cloud) == np.ndarray:
+            point_data = point_cloud[v, u]
+            point_data = point_data[:, :3]
+        else:
+            point_data = np.array(
+                [point_cloud.get_value(int(point[0].item()), int(point[1].item()))[1][:3] for point in midpoints])
         # 过滤掉无效的数据
         point_data = point_data[~np.isnan(point_data).any(axis=1)]
         point_data = point_data[~np.isinf(point_data).any(axis=1)]
@@ -490,8 +436,7 @@ def get_up_down_point(box, segpoint, key, bgr_image, point_cloud, color_palette,
     return Points
 
 
-def get_information(box, segpoint, key, value, bgr_image, file, point_cloud, color_palette, ret_datetime, lane,
-                    point_size):
+def get_information(box, segpoint, key, value, bgr_image, file, point_cloud, color_palette, ret_datetime, lane, point_size):
     # 传入 ret_datetime 方便定位排查
     lane0 = time.time()
     points = get_up_down_point(box, segpoint, key, bgr_image, point_cloud, color_palette, point_size, value,
@@ -503,6 +448,7 @@ def get_information(box, segpoint, key, value, bgr_image, file, point_cloud, col
     # print(f"{value}: {(time.time() - lane0) * 1000:6.2f}ms")
 
 
+# 车道线
 def write_lane(file, value, _coordinates):
     file.write(f"{value}s:{len(_coordinates)}\n")
     # 3维点从左往右排， 再写入
@@ -520,6 +466,7 @@ def write_lane(file, value, _coordinates):
             file.write(f"{value.lower()}{index + 1}:{0}\n")
 
 
+# 护栏 隔音带  水泥墙  绿化带  路缘石
 def write_except_lane(file, value, _coordinates):
     # 按左右排序
     sorted_lists = sorted(_coordinates, key=lambda x: float(x[0].split()[0]) if x else float('inf'))
@@ -577,23 +524,27 @@ def write_except_lane(file, value, _coordinates):
             file.write(f"{value.lower()}{index + 1}:{0}\n")
 
 
-# 导流线
+# 路口黄网线 导流区 待行区 防抛网 隔离挡板
 def write_Irregulate(box, segpoint, key, value, file, point_cloud):
     file.write(f"{value}s:{len([tensor for tensor, is_true in zip(segpoint, box[:, -1] == key) if is_true])}\n")
     for i, j in enumerate([tensor for tensor, is_true in zip(segpoint, box[:, -1] == key) if is_true]):
         j = np.int32(j[~np.any(j < 0, axis=1)])  # 过滤掉负值
         u = j[:, 0]
         v = j[:, 1]
-        # print(midpoints)
-        point_data = point_cloud[v, u]
-        point_data = point_data / 1000
-        pos = point_data[:, :3]
+        if type(point_cloud) == np.ndarray:
+            point_data = point_cloud[v, u]
+            pos = point_data[:, :3]
+        else:
+            pos = np.array(
+                [point_cloud.get_value(int(point[0].item()), int(point[1].item()))[1][:3] for point in j])
         inf_indices = np.isinf(pos).any(axis=1)
         nan_indices = np.isnan(pos).any(axis=1)
         # 将 inf 和 nan 的行索引合并
         invalid_indices = np.logical_or(inf_indices, nan_indices)
         # 过滤掉这些行
         pos_filtered = pos[~invalid_indices]
+        # 过滤掉全0
+        pos_filtered = pos_filtered[~np.all(pos_filtered == 0, axis=1)]
         # 排序
         pos_sorted = sorted(pos_filtered, key=lambda x: x[2])
         if len(pos_sorted) > 30:
@@ -605,17 +556,22 @@ def write_Irregulate(box, segpoint, key, value, file, point_cloud):
         file.write(f"{value.lower()}{i + 1}:{formatted_data}\n")
 
 
-# 目标
+# 目标,如箭头等
 def write_all_target(box, segpoint, key, value, file, point_cloud):
     file.write(f"{value}s:{len([tensor for tensor, is_true in zip(segpoint, box[:, -1] == key) if is_true])}\n")
     for i, j in enumerate([tensor for tensor, is_true in zip(box, box[:, -1] == key) if is_true]):
         coords = np.int32(j[:4])
+        # fixme 框的中心不一定在物体上，深度不一定准
         center_x = np.int32((coords[0] + coords[2]) / 2)
         center_y = np.int32((coords[1] + coords[3]) / 2)
-        center3D = point_cloud[center_y, center_x][:3]
-        formatted_data = ' '.join(['{:.3f}'.format(x) for x in center3D])
+        if type(point_cloud) == np.ndarray:
+            center3D = point_cloud[center_y, center_x][:3]
+            formatted_data = ' '.join(['{:.3f}'.format(x) for x in center3D])
+        else:
+            center3D = point_cloud.get_value(int(center_x), int(center_y))[1][:3]
+            center3D = center3D[~np.all(center3D == 0, axis=0)]
+            formatted_data = ' '.join(['{:.3f}'.format(x) for x in center3D[0]])
         file.write(f"{value.lower()}{i + 1}:{formatted_data}\n")
-        # todo 框的四个角坐标？
 
 
 # 杂项
@@ -680,3 +636,92 @@ def display_image(cv_image):
     cv2.imshow("res", cv_image)
     cv2.resizeWindow('res', 800, 600)
     cv2.waitKey(1)
+
+
+# 在detect_image_or_imgdir和detect_videos中显示车道线的拟合
+def image_video_fit(j, res):
+    # 按 y 值进行排序
+    sorted_points = j[j[:, 1].argsort()]
+    # 获取唯一的 y 值，以及对应的每个 y 的第一个和最后一个点
+    y_unique, indices_first = np.unique(sorted_points[:, 1], return_index=True)
+    indices_last = np.unique(sorted_points[:, 1], return_index=True, return_counts=True)[1] + \
+                   np.unique(sorted_points[:, 1], return_counts=True)[1] - 1
+    # 获取上边缘和下边缘的轮廓点
+    upper_contour_points = sorted_points[indices_last]
+    lower_contour_points = sorted_points[indices_first]
+    # 掐头去尾 此处拟合防止midpoints的点几个几个的挤在一起
+    upper_contour_points = upper_contour_points[3:-10] if len(
+        upper_contour_points) > 20 else upper_contour_points
+    lower_contour_points = lower_contour_points[3:-10] if len(
+        lower_contour_points) > 20 else lower_contour_points
+    _, fit_pointU = my_fit(upper_contour_points, res, cutoff=1)
+    upper_contour_points = fit_pointU.T
+    _, fit_pointL = my_fit(lower_contour_points, res, cutoff=1)
+    lower_contour_points = fit_pointL.T
+    # 等距从 upper_contour_points 中取 20 个点
+    num_points = 15
+    indices = np.linspace(0, len(upper_contour_points) - 1, num=num_points, dtype=int)
+    sampled_upper_points = upper_contour_points[indices]
+    # 从 lower_contour_points 中找到离 sampled_upper_points 最近的点
+    nearest_lower_points = []
+    for point in sampled_upper_points:
+        # 计算距离
+        distances = np.linalg.norm(lower_contour_points - point, axis=1)
+        # 找到最近点
+        nearest_idx = np.argmin(distances)
+        nearest_lower_points.append(lower_contour_points[nearest_idx])
+    nearest_lower_points = np.array(nearest_lower_points)
+    # 计算每对点的中间点
+    midpoints = np.int32((sampled_upper_points + nearest_lower_points) / 2)
+    condition = (midpoints[:, 0] <= 1920) & (midpoints[:, 1] <= 1080)
+
+    # 使用条件过滤 midpoints
+    midpoints = midpoints[condition]
+    # 计算20个点首尾距离
+    distance = np.linalg.norm(midpoints[0] - midpoints[-1])
+    if distance < 80:  # 近处的距离才会小，理论上来说都会有点云值
+        # 计算等间距的索引
+        num_points = 5
+        indices = np.linspace(0, len(midpoints) - 1, num=num_points, dtype=int)
+        # 提取等间距的点
+        midpoints = midpoints[indices]
+    for point in midpoints[:-1]:
+        cv2.circle(res, tuple(point), radius=5, color=(0, 0, 255), thickness=-1)
+
+
+# 保存彩色mask
+def save_mask(save_path, image, masks):
+    image = Path(image) if not isinstance(image, Path) else image
+    filename = os.path.join(save_path, f'{os.path.splitext(image.name)[0]}_mask.png')
+    # 根据第一个掩膜的尺寸创建空白彩色图像
+    height, width = masks[0].shape[:2]
+    combined_mask = np.full((height, width, 3), (114, 114, 114), dtype=np.uint8)  # 初始化为灰色
+    if masks is not None:
+        # 如果有多个掩膜
+        if len(masks) != 0:
+            # 定义颜色列表，不同掩膜用不同颜色
+            colors = generate_colors(len(masks))
+            # 遍历每个掩膜
+            for i in range(len(masks)):
+                mask_image = (masks[i] * 255).astype(np.uint8)  # 将掩膜转化为 0 或 255 的二值图像
+                color_mask = np.zeros_like(combined_mask)  # 创建与 combined_mask 大小相同的空白彩色图像
+                # 为每个通道分别应用颜色
+                for j in range(3):
+                    color_mask[:, :, j] = mask_image * (colors[i % len(colors)][j] // 255)
+                # 将彩色掩膜叠加到 combined_mask
+                combined_mask = cv2.addWeighted(combined_mask, 1, color_mask, 0.5, 0)
+            # 保存最终组合的掩膜图像
+            cv2.imwrite(filename, combined_mask)
+    else:
+        cv2.imwrite(filename, combined_mask)
+
+
+# detect_image_or_imgdir中生成mask颜色
+def generate_colors(num_colors):
+    colors = []
+    for i in range(num_colors):
+        # 均匀分布在 HSV 空间的色调上，然后转换为 BGR
+        hue = int(i * 180 / num_colors)  # 取值范围为 0 到 180（OpenCV 中 H 通道范围为 0-180）
+        color = cv2.cvtColor(np.uint8([[[hue, 255, 255]]]), cv2.COLOR_HSV2BGR)[0][0]
+        colors.append(tuple(int(c) for c in color))  # 转换为 BGR 元组
+    return colors

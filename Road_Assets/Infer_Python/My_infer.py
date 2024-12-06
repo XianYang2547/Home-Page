@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# @Time    : 2024/5/20 5:20
+# @Time    : 2024/9/20 5:20
 # @Author  : XianYang🚀
 # @Email   : xy_mts@163.com
 # @File    : My_infer.py
@@ -34,15 +34,18 @@ class Dection(My_detection):
     def __init__(self, opt):
         super().__init__()
         with open('./xy/xyz_class.yaml', 'r', encoding='utf-8') as file:
-            myclass = yaml.safe_load(file)
+            myconfig = yaml.safe_load(file)
         # 类别分类
-        self.lane = {int(key): value for key, value in myclass['lane'].items()}  # 车道线
-        self.seg = {int(key): value for key, value in myclass['seg'].items()}  # 护栏 隔音带  水泥墙  绿化带  路缘石
-        self.obj = {int(key): value for key, value in myclass['obj'].items()}  # 画框显示
-        self.other = {int(key): value for key, value in myclass['other'].items()}  # 路口黄网线 导流区 待行区 防抛网 隔离挡板
+        self.lane = {int(key): value for key, value in myconfig['classes']['lane'].items()}  # 车道线
+        self.seg = {int(key): value for key, value in myconfig['classes']['seg'].items()}  # 护栏 隔音带  水泥墙  绿化带  路缘石
+        self.obj = {int(key): value for key, value in myconfig['classes']['obj'].items()}  # 画框显示
+        self.other = {int(key): value for key, value in myconfig['classes']['other'].items()}  # 路口黄网线 导流区 待行区 防抛网 隔离挡板
         self.lane_seg_other = {**self.lane, **self.seg, **self.other}  # 在画图显示中用到的
         self.classes = {**self.lane, **self.seg, **self.obj, **self.other}  # total
-        self.color_palette = np.random.uniform(50, 255, size=(len(self.classes), 3))
+        # 颜色板
+        palette = myconfig['palette']
+        self.color_palette = palette[0][:len(self.classes)]
+
         if os.path.splitext(opt.model)[1] == '.plan':
             self.Models = Build_TRT_model(str(Path(opt.model).resolve()))
             self.warm_up(15)
@@ -368,8 +371,7 @@ class ImageSubscriber(Node):
         try:
             if self.opt.use_playback:
                 cv_image = self.bridge.compressed_imgmsg_to_cv2(img_msg, "bgr8")
-                depth_image = self.bridge.compressed_imgmsg_to_cv2(depth_msg,
-                                                                   "32FC1")  # fixme 希望depth_msg为ndarray --->(w,h,4) 或者uv转换
+                depth_image = self.bridge.compressed_imgmsg_to_cv2(depth_msg, "32FC1")  # fixme 希望depth_msg为ndarray --->(w,h,4) 或者uv转换
 
             else:
                 # 转换 ROS 消息为 OpenCV 图像
@@ -433,9 +435,9 @@ class ImageSubscriber(Node):
 def make_parser():
     # model config
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default=f"{os.path.abspath('../models/modelm.plan')}")
-    parser.add_argument('--iou_threshold', type=str, default=0.5)
-    parser.add_argument('--conf_threshold', type=str, default=0.5)
+    parser.add_argument('--model', type=str, default=f"{os.path.abspath('../models/best.plan')}")
+    parser.add_argument('--iou_threshold', type=float, default=0.5)
+    parser.add_argument('--conf_threshold', type=float, default=0.5)
     # output path
     parser.add_argument('--base_directory', type=str, default=f"{os.path.abspath('../output')}")
     # use ros bag as input
@@ -443,14 +445,11 @@ def make_parser():
     # rtsp
     parser.add_argument('--rtsp', type=str, default=False)
     parser.add_argument('--url', type=str, default=get_ip_addresses())
-    # save config
-    parser.add_argument('--save_video', type=str, default=False)
     # tracking args
     parser.add_argument("--track_thresh", type=float, default=0.5, help="tracking confidence threshold")
     parser.add_argument("--track_buffer", type=int, default=30, help="the frames for keep lost tracks")
     parser.add_argument("--match_thresh", type=float, default=0.8, help="matching threshold for tracking")
-    parser.add_argument("--aspect_ratio_thresh", type=float, default=1.6,
-                        help="threshold for filtering out boxes of which aspect ratio are above the given value.")
+    parser.add_argument("--aspect_ratio_thresh", type=float, default=1.6)
     parser.add_argument('--min_box_area', type=float, default=10, help='filter out tiny boxes')
     parser.add_argument("--mot20", dest="mot20", default=False, action="store_true", help="test mot20.")
 
